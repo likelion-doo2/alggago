@@ -11,6 +11,7 @@ STONE_DIAMETER = 50
 RESTITUTION = 0.9
 BOARD_FRICTION = 1.50
 STONE_FRICTION = 0.5
+ROTATIONAL_FRICTION = 0.04
 
 # Layering of sprites
 module ZOrder
@@ -56,7 +57,7 @@ class Board
   include Singleton
   attr_reader :body, :shape
   def initialize
-    @image = Gosu::Image.new("media/board_logo.png", :tileable => true)
+    @image = Gosu::Image.new("media/board_logo.png")
   end
 
   def draw
@@ -97,27 +98,51 @@ class Stone
     @shape.e = RESTITUTION
     @shape.u = STONE_FRICTION
 
-    @image_body = Gosu::Image.new("media/#{@color}_stone_likelion.png", :tileable => true)
+    @stone_body = Gosu::Image.new("media/#{@color}_stone.png")
+    @logo_body = Gosu::Image.new("media/likelion_logo.png")
   end
 
   def update
+    #update speed
     new_vel_x, new_vel_y = 0.0, 0.0
     if @body.v.x != 0 and @body.v.y != 0
       new_vel_x = get_reduced_velocity(@body.v.x, @body.v.length)
       new_vel_y = get_reduced_velocity(@body.v.y, @body.v.length)
     end
     @body.v = CP::Vec2.new(new_vel_x, new_vel_y)
+
+    #update speed of angle
+    new_rotational_v = 0
+    new_rotational_v = get_reduced_rotational_velocity @body.w if @body.w != 0
+    @body.w = new_rotational_v
   end
 
   def draw
-    @image_body.draw_rot(@body.p.x, @body.p.y, ZOrder::Stone, 
-                          @body.a.radians_to_gosu, 0.5, 0.5, STONE_DIAMETER/@image_body.width.to_f, STONE_DIAMETER/@image_body.height.to_f)
+    @stone_body.draw(@body.p.x, @body.p.y, ZOrder::Stone,
+                          STONE_DIAMETER/@stone_body.width.to_f, STONE_DIAMETER/@stone_body.height.to_f)
+    @logo_body.draw_rot(@body.p.x + STONE_DIAMETER/2.0, @body.p.y + STONE_DIAMETER/2.0, 
+                          ZOrder::Stone, @body.a.radians_to_gosu, 0.5, 0.5, 
+                          0.85 * (STONE_DIAMETER/@stone_body.width.to_f), 
+                          0.85 * (STONE_DIAMETER/@stone_body.height.to_f), 
+                          0x88ffffff)
   end 
 
   private
   def get_reduced_velocity original_velocity, original_velocity_length
-    (original_velocity.abs / original_velocity) * 
-      (original_velocity.abs - BOARD_FRICTION * (original_velocity.abs / original_velocity_length))
+    if original_velocity.abs <= BOARD_FRICTION * (original_velocity.abs / original_velocity_length)
+      return 0 
+    else 
+      return (original_velocity.abs / original_velocity) * 
+                (original_velocity.abs - BOARD_FRICTION * (original_velocity.abs / original_velocity_length))
+    end
+  end
+
+  def get_reduced_rotational_velocity velocity
+    if velocity.abs <= ROTATIONAL_FRICTION
+      return 0
+    else
+      return (velocity.abs / velocity) * (velocity.abs - ROTATIONAL_FRICTION)
+    end
   end
 end
 
