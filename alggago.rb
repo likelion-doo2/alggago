@@ -5,13 +5,14 @@ require 'singleton'
 
 WIDTH, HEIGHT = 1000, 700
 TICK = 1.0/60.0
-NUM_STONES = 20
+NUM_STONES = 10
 PLAYER_COLOR = ["black", "white"]
 STONE_DIAMETER = 50
 RESTITUTION = 0.9
 BOARD_FRICTION = 1.50
 STONE_FRICTION = 0.5
 ROTATIONAL_FRICTION = 0.04
+FINGER_POWER = 3
 
 # Layering of sprites
 module ZOrder
@@ -36,6 +37,8 @@ class Alggago < Gosu::Window
       end
       @players << player
     end
+    @player_turn = @players[0]
+    @selected_stone = nil
   end
 
   def update
@@ -51,11 +54,44 @@ class Alggago < Gosu::Window
   def needs_cursor?
     true
   end
+
+  def button_down(id) 
+    can_throw = true
+    @players.each do |p|
+      p.stones.each { |s| can_throw = false if (s.body.w != 0) or (s.body.v.x != 0) or (s.body.v.y != 0) }
+    end
+    if can_throw
+      case id 
+      when Gosu::MsLeft
+        @player_turn.stones.each do |s|
+          @selected_stone = s if (((s.body.p.x < mouse_x) and (s.body.p.x + STONE_DIAMETER > mouse_x)) and 
+                                    ((s.body.p.y < mouse_y) and (s.body.p.y + STONE_DIAMETER > mouse_y)))
+        end
+      end 
+    end
+  end
+
+  def button_up(id)
+    case id 
+    when Gosu::MsLeft
+      if !@selected_stone.nil?
+        x_diff = mouse_x - (@selected_stone.body.p.x + STONE_DIAMETER/2.0)
+        y_diff = mouse_y - (@selected_stone.body.p.y + STONE_DIAMETER/2.0)
+
+        @selected_stone.body.v = CP::Vec2.new(x_diff * FINGER_POWER, y_diff * FINGER_POWER)
+        @player_turn = if @player_turn == @players[0]
+                          @players[1]
+                       elsif @player_turn == @players[1]
+                          @players[0]
+                       end
+      end
+      @selected_stone = nil
+    end 
+  end
 end
 
 class Board
   include Singleton
-  attr_reader :body, :shape
   def initialize
     @image = Gosu::Image.new("media/board_logo.png")
   end
@@ -70,10 +106,9 @@ class Player
   attr_reader :stones
   def initialize(color, num)
     @stones = Array.new
-    @num_stones = num
     @color = color
 
-    @num_stones.times { @stones << Stone.new(@color) }
+    num.times { @stones << Stone.new(@color) }
   end
   
   def draw
@@ -81,15 +116,19 @@ class Player
   end
 
   def update
-    @stones.each {|stone| stone.update}
+    @stones.each do |stone|
+      stone.update
+      @stones.delete stone if (stone.body.p.x + STONE_DIAMETER/2.0 > HEIGHT) or 
+                              (stone.body.p.x + STONE_DIAMETER/2.0 < 0) or
+                              (stone.body.p.y + STONE_DIAMETER/2.0 > HEIGHT) or 
+                              (stone.body.p.y + STONE_DIAMETER/2.0 < 0)
+    end
   end
 end
 
 class Stone
   attr_reader :body, :shape 
   def initialize(color)
-    @color = color
-
     @body = CP::Body.new(1, CP::moment_for_circle(1.0, 0, 1, CP::Vec2.new(0, 0))) 
     @body.p = CP::Vec2.new(rand(HEIGHT), rand(HEIGHT)) 
     @body.v = CP::Vec2.new(rand(HEIGHT)-HEIGHT/2, rand(HEIGHT)-HEIGHT/2)
@@ -98,7 +137,7 @@ class Stone
     @shape.e = RESTITUTION
     @shape.u = STONE_FRICTION
 
-    @stone_body = Gosu::Image.new("media/#{@color}_stone.png")
+    @stone_body = Gosu::Image.new("media/#{color}_stone.png")
     @logo_body = Gosu::Image.new("media/likelion_logo.png")
   end
 
