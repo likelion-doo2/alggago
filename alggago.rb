@@ -2,6 +2,7 @@
 require 'gosu'
 require 'chipmunk'
 require 'singleton'
+require 'slave'
 
 WIDTH, HEIGHT = 1000, 700
 TICK = 1.0/60.0
@@ -39,6 +40,13 @@ class Alggago < Gosu::Window
     end
     @player_turn = @players[0]
     @selected_stone = nil
+
+    #Load AI
+    ais = Dir.entries(".").map {|x| x if x.include?("ai_")}.compact
+    slaves = Array.new
+    ais.each do |x|
+      slaves << Slave.object(:async => true){ `ruby #{x}` }
+    end
   end
 
   def update
