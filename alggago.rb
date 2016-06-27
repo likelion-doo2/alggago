@@ -3,6 +3,7 @@ require 'gosu'
 require 'chipmunk'
 require 'singleton'
 require 'slave'
+require "xmlrpc/client"
 
 WIDTH, HEIGHT = 1000, 700
 TICK = 1.0/60.0
@@ -20,15 +21,27 @@ module ZOrder
   Board, Stone, Mouse = 0, 1, 2
 end
 
+def is_port_open?(port)
+  begin
+    s = TCPServer.new("127.0.0.1", port)
+  rescue Errno::EADDRINUSE
+    return false
+  end
+  s.close
+  return true
+end
+
 class Alggago < Gosu::Window
   
   def initialize
     super(WIDTH, HEIGHT, false)
     self.caption = '알까고!'
 
+    @can_throw = true
     @space = CP::Space.new
     @board  = Board.instance
     @players = Array.new
+    @font = Gosu::Font.new(self, Gosu::default_font_name, 18)
 
     PLAYER_COLOR.each do |player_color|
       player = Player.new(player_color, NUM_STONES)
@@ -42,21 +55,73 @@ class Alggago < Gosu::Window
     @selected_stone = nil
 
     #Load AI
-    ais = Dir.entries(".").map {|x| x if x.include?("ai_")}.compact
+    ais = Dir.entries(".").map {|x| x if /ai_[[:alnum:]]+.rb/.match(x)}.compact
     slaves = Array.new
+    servers = Array.new
+    xml_port = 8000
     ais.each do |x|
-      slaves << Slave.object(:async => true){ `ruby #{x}` }
+      (xml_port..8080).to_a.each do |p|
+        if is_port_open?(p)
+          xml_port = p
+          break
+        end
+      end
+      slaves << Slave.object(:async => true){ `ruby #{x} #{xml_port}` }
+      servers << XMLRPC::Client.new("localhost", "/", xml_port)
+      xml_port += 1
+    end
+    0.upto(servers.size - 1) do |count|
+      server_connection = false
+      while !server_connection
+        begin
+          @players[count].player_name = servers[count].call("alggago.get_name")
+          server_connection = true
+        rescue Errno::ECONNREFUSED
+        end
+      end
     end
   end
 
   def update
     @space.step(TICK)
-    @players.each { |player| player.update }
+    @players.each do |player|
+      player.update
+      @can_throw = true
+      player.stones.each do |s| 
+        @can_throw = false if (s.body.w != 0) or (s.body.v.x != 0) or (s.body.v.y != 0) 
+      end
+    end
   end
 
   def draw
     @board.draw
     @players.each { |player| player.draw }
+  
+    gameover = false
+    winner = "white"
+    @players.each do |player| 
+      if player.number_of_stones <= 0 
+        gameover = true 
+        winner = if player.color == "white" then "black" else "white" end
+      end
+    end
+
+    if gameover
+      @font.draw("게임끝!  #{winner} 승리!!", 720, 170, 1.0, 1.0, 1.0)
+    else
+      moveable = if @can_throw then "가능" else "불가능" end
+      @font.draw("이동 가능 여부 : #{moveable}", 720, 170, 1.0, 1.0, 1.0)
+      @font.draw("다음 턴 : #{@player_turn.color}", 720, 190, 1.0, 1.0, 1.0)
+
+      pivot_font_y_position = {"black" => 250, "white" => 350}
+      @players.each do |player|
+        @font.draw(player.player_name, 720, 
+                      pivot_font_y_position[player.color], 1.0, 1.0, 1.0)
+        @font.draw("남은 돌 : #{player.number_of_stones}개", 720, 
+                      pivot_font_y_position[player.color] + 20, 1.0, 1.0, 1.0)
+      end
+    end
+    @font.draw("제작 : 멋쟁이사자처럼", 780, 670, 1.0, 1.0, 1.0)
   end
 
   def needs_cursor?
@@ -65,9 +130,6 @@ class Alggago < Gosu::Window
 
   def button_down(id) 
     can_throw = true
-    @players.each do |p|
-      p.stones.each { |s| can_throw = false if (s.body.w != 0) or (s.body.v.x != 0) or (s.body.v.y != 0) }
-    end
     if can_throw
       case id 
       when Gosu::MsLeft
@@ -111,25 +173,31 @@ class Board
 end
 
 class Player
-  attr_reader :stones
+  attr_reader :stones, :color, :number_of_stones
+  attr_accessor :player_name
   def initialize(color, num)
     @stones = Array.new
     @color = color
-
+    @player_name = ""
+    @number_of_stones = NUM_STONES
     num.times { @stones << Stone.new(@color) }
   end
   
   def draw
     @stones.each {|stone| stone.draw}
+
   end
 
   def update
     @stones.each do |stone|
       stone.update
-      @stones.delete stone if (stone.body.p.x + STONE_DIAMETER/2.0 > HEIGHT) or 
+      if (stone.body.p.x + STONE_DIAMETER/2.0 > HEIGHT) or 
                               (stone.body.p.x + STONE_DIAMETER/2.0 < 0) or
                               (stone.body.p.y + STONE_DIAMETER/2.0 > HEIGHT) or 
                               (stone.body.p.y + STONE_DIAMETER/2.0 < 0)
+        @stones.delete stone 
+        @number_of_stones -= 1
+      end
     end
   end
 end
