@@ -9,7 +9,7 @@ class MyAlggago
   end
 
   def get_name
-    "AI WHITE"
+    "AI BLACK"
   end
 end
 

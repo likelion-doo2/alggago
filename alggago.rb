@@ -15,6 +15,7 @@ BOARD_FRICTION = 1.50
 STONE_FRICTION = 0.5
 ROTATIONAL_FRICTION = 0.04
 FINGER_POWER = 3
+UI_PIVOT = 100
 
 # Layering of sprites
 module ZOrder
@@ -32,17 +33,17 @@ def is_port_open?(port)
 end
 
 class Alggago < Gosu::Window
-  
-  def initialize
-    super(WIDTH, HEIGHT, false)
-    self.caption = '알까고!'
 
+  def init_game
     @can_throw = true
-    @space = CP::Space.new
-    @board  = Board.instance
-    @players = Array.new
-    @font = Gosu::Font.new(self, Gosu::default_font_name, 18)
-
+    @players.each do |player|
+      player.stones.each do |stone|
+        @space.remove_body(stone.body)
+        @space.remove_shape(stone.shape)
+      end
+      player.stones.clear
+    end
+    @players.clear
     PLAYER_COLOR.each do |player_color|
       player = Player.new(player_color, NUM_STONES)
       player.stones.each do |stone|
@@ -75,20 +76,41 @@ class Alggago < Gosu::Window
       while !server_connection
         begin
           @players[count].player_name = servers[count].call("alggago.get_name")
+          @players[count].ai_flag = true
           server_connection = true
         rescue Errno::ECONNREFUSED
         end
       end
     end
   end
+  
+  def initialize
+    super(WIDTH, HEIGHT, false)
+    self.caption = '알까고!'
+
+    @can_throw = true
+    @players = Array.new
+    @space = CP::Space.new
+    @board  = Board.instance
+    @font = Gosu::Font.new(self, Gosu::default_font_name, 18)
+
+    init_game
+
+  end
 
   def update
     @space.step(TICK)
+    @can_throw = true
     @players.each do |player|
       player.update
-      @can_throw = true
-      player.stones.each do |s| 
-        @can_throw = false if (s.body.w != 0) or (s.body.v.x != 0) or (s.body.v.y != 0) 
+      player.stones.each do |stone| 
+        @can_throw = false if (stone.body.w != 0) or (stone.body.v.x != 0) or (stone.body.v.y != 0) 
+        if stone.should_delete 
+          @space.remove_body(stone.body)
+          @space.remove_shape(stone.shape)
+          player.number_of_stones -= 1
+          player.stones.delete stone
+        end
       end
     end
   end
@@ -107,13 +129,13 @@ class Alggago < Gosu::Window
     end
 
     if gameover
-      @font.draw("게임끝!  #{winner} 승리!!", 720, 170, 1.0, 1.0, 1.0)
+      @font.draw("게임끝!  #{winner} 승리!!", 720, UI_PIVOT + 20, 1.0, 1.0, 1.0)
     else
       moveable = if @can_throw then "가능" else "불가능" end
-      @font.draw("이동 가능 여부 : #{moveable}", 720, 170, 1.0, 1.0, 1.0)
-      @font.draw("다음 턴 : #{@player_turn.color}", 720, 190, 1.0, 1.0, 1.0)
+      @font.draw("이동 가능 여부 : #{moveable}", 720, UI_PIVOT + 20, 1.0, 1.0, 1.0)
+      @font.draw("다음 턴 : #{@player_turn.color}", 720, UI_PIVOT + 40, 1.0, 1.0, 1.0)
 
-      pivot_font_y_position = {"black" => 250, "white" => 350}
+      pivot_font_y_position = {"black" => UI_PIVOT + 150, "white" => UI_PIVOT + 220}
       @players.each do |player|
         @font.draw(player.player_name, 720, 
                       pivot_font_y_position[player.color], 1.0, 1.0, 1.0)
@@ -121,6 +143,10 @@ class Alggago < Gosu::Window
                       pivot_font_y_position[player.color] + 20, 1.0, 1.0, 1.0)
       end
     end
+
+    @font.draw("black/white 바꾸기 : C", 720, UI_PIVOT + 370, 1.0, 1.0, 1.0)
+    @font.draw("새로 시작하기 : R", 720, UI_PIVOT + 390, 1.0, 1.0, 1.0)
+    @font.draw("다음 턴 연산하기 : N", 720, UI_PIVOT + 410, 1.0, 1.0, 1.0)
     @font.draw("제작 : 멋쟁이사자처럼", 780, 670, 1.0, 1.0, 1.0)
   end
 
@@ -128,10 +154,18 @@ class Alggago < Gosu::Window
     true
   end
 
+  def restart
+    puts "RESTART"
+    init_game
+  end
+
   def button_down(id) 
     can_throw = true
     if can_throw
       case id 
+      when Gosu::KbR 
+        restart
+
       when Gosu::MsLeft
         @player_turn.stones.each do |s|
           @selected_stone = s if (((s.body.p.x < mouse_x) and (s.body.p.x + STONE_DIAMETER > mouse_x)) and 
@@ -173,12 +207,13 @@ class Board
 end
 
 class Player
-  attr_reader :stones, :color, :number_of_stones
-  attr_accessor :player_name
+  attr_reader :stones, :color
+  attr_accessor :player_name, :ai_flag, :number_of_stones
   def initialize(color, num)
     @stones = Array.new
     @color = color
-    @player_name = ""
+    @player_name = "사람_#{Array.new(6){rand(10)}.join}"
+    @ai_flag = false
     @number_of_stones = NUM_STONES
     num.times { @stones << Stone.new(@color) }
   end
@@ -195,8 +230,7 @@ class Player
                               (stone.body.p.x + STONE_DIAMETER/2.0 < 0) or
                               (stone.body.p.y + STONE_DIAMETER/2.0 > HEIGHT) or 
                               (stone.body.p.y + STONE_DIAMETER/2.0 < 0)
-        @stones.delete stone 
-        @number_of_stones -= 1
+        stone.should_delete = true
       end
     end
   end
@@ -204,7 +238,9 @@ end
 
 class Stone
   attr_reader :body, :shape 
+  attr_accessor :should_delete
   def initialize(color)
+    @should_delete = false
     @body = CP::Body.new(1, CP::moment_for_circle(1.0, 0, 1, CP::Vec2.new(0, 0))) 
     @body.p = CP::Vec2.new(rand(HEIGHT), rand(HEIGHT)) 
     @body.v = CP::Vec2.new(rand(HEIGHT)-HEIGHT/2, rand(HEIGHT)-HEIGHT/2)
@@ -261,5 +297,5 @@ class Stone
   end
 end
 
-window = Alggago.new
-window.show
+@window = Alggago.new
+@window.show
