@@ -4,8 +4,16 @@ require "socket"
 s = XMLRPC::Server.new(ARGV[0])
 
 class MyAlggago
-  def sum_difference(a, b)
-    { "sum" => a + b, "difference" => a - b }
+  def calculate(positions)
+
+    #Codes here
+
+    #Return values
+    message = positions.size
+    stone_number = 0
+    stone_x_strength = 300
+    stone_y_strength = 400
+    return [stone_number, stone_x_strength, stone_y_strength, message]
   end
 
   def get_name

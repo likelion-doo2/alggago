@@ -56,9 +56,9 @@ class Alggago < Gosu::Window
     @selected_stone = nil
 
     #Load AI
-    ais = Dir.entries(".").map {|x| x if /ai_[[:alnum:]]+.rb/.match(x)}.compact
-    slaves = Array.new
-    servers = Array.new
+    ais = Dir.entries(".").map {|x| x if /^ai_[[:alnum:]]+.rb$/.match(x)}.compact
+    @slaves = Array.new
+    @servers = Array.new
     xml_port = 8000
     ais.each do |x|
       (xml_port..8080).to_a.each do |p|
@@ -67,15 +67,15 @@ class Alggago < Gosu::Window
           break
         end
       end
-      slaves << Slave.object(:async => true){ `ruby #{x} #{xml_port}` }
-      servers << XMLRPC::Client.new("localhost", "/", xml_port)
+      @slaves << Slave.object(:async => true){ `ruby #{x} #{xml_port}` }
+      @servers << XMLRPC::Client.new("localhost", "/", xml_port)
       xml_port += 1
     end
-    0.upto(servers.size - 1) do |count|
+    0.upto(@servers.size - 1) do |count|
       server_connection = false
       while !server_connection
         begin
-          @players[count].player_name = servers[count].call("alggago.get_name")
+          @players[count].player_name = @servers[count].call("alggago.get_name")
           @players[count].ai_flag = true
           server_connection = true
         rescue Errno::ECONNREFUSED
@@ -144,8 +144,8 @@ class Alggago < Gosu::Window
       end
     end
 
-    @font.draw("black/white 바꾸기 : C", 720, UI_PIVOT + 370, 1.0, 1.0, 1.0)
-    @font.draw("새로 시작하기 : R", 720, UI_PIVOT + 390, 1.0, 1.0, 1.0)
+    @font.draw("새로 시작하기 : R", 720, UI_PIVOT + 370, 1.0, 1.0, 1.0)
+    @font.draw("턴 넘기기 : P", 720, UI_PIVOT + 390, 1.0, 1.0, 1.0)
     @font.draw("다음 턴 연산하기 : N", 720, UI_PIVOT + 410, 1.0, 1.0, 1.0)
     @font.draw("제작 : 멋쟁이사자처럼", 780, 670, 1.0, 1.0, 1.0)
   end
@@ -155,8 +155,35 @@ class Alggago < Gosu::Window
   end
 
   def restart
-    puts "RESTART"
     init_game
+  end
+
+  def pass_turn
+    if @can_throw
+      @player_turn = if @player_turn == @players[0]
+                        @players[1]
+                     elsif @player_turn == @players[1]
+                        @players[0]
+                     end
+    end
+  end
+
+  def calculate
+    if @player_turn.ai_flag and @can_throw
+      my_index = if @player_turn == @players[0] then 0 else 1 end
+      opposite_index = if @player_turn == @players[0] then 1 else 0 end
+      my_position = @players[my_index].stones.map {|s| [s.body.p.x, s.body.p.y]}
+      opposite_position = @players[opposite_index].stones.map {|s| [s.body.p.x, s.body.p.y]}
+
+      number, x_strength, y_strength, message = 
+          @servers[my_index].call(
+                  "alggago.calculate", 
+                  [my_position] + [opposite_position]
+                )
+      puts message
+      @player_turn.stones[number].body.v = CP::Vec2.new(x_strength, y_strength)
+      pass_turn
+    end
   end
 
   def button_down(id) 
@@ -165,7 +192,10 @@ class Alggago < Gosu::Window
       case id 
       when Gosu::KbR 
         restart
-
+      when Gosu::KbP 
+        pass_turn
+      when Gosu::KbN 
+        calculate
       when Gosu::MsLeft
         @player_turn.stones.each do |s|
           @selected_stone = s if (((s.body.p.x < mouse_x) and (s.body.p.x + STONE_DIAMETER > mouse_x)) and 
@@ -183,11 +213,7 @@ class Alggago < Gosu::Window
         y_diff = mouse_y - (@selected_stone.body.p.y + STONE_DIAMETER/2.0)
 
         @selected_stone.body.v = CP::Vec2.new(x_diff * FINGER_POWER, y_diff * FINGER_POWER)
-        @player_turn = if @player_turn == @players[0]
-                          @players[1]
-                       elsif @player_turn == @players[1]
-                          @players[0]
-                       end
+        pass_turn
       end
       @selected_stone = nil
     end 
