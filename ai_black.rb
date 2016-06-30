@@ -11,8 +11,8 @@ class MyAlggago
     #Return values
     message = positions.size
     stone_number = 0
-    stone_x_strength = 300
-    stone_y_strength = 400
+    stone_x_strength = 40000
+    stone_y_strength = 40000
     return [stone_number, stone_x_strength, stone_y_strength, message]
   end
 

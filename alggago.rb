@@ -16,6 +16,7 @@ STONE_FRICTION = 0.5
 ROTATIONAL_FRICTION = 0.04
 FINGER_POWER = 3
 UI_PIVOT = 100
+MAX_POWER = 700.0
 
 # Layering of sprites
 module ZOrder
@@ -180,9 +181,27 @@ class Alggago < Gosu::Window
                   "alggago.calculate", 
                   [my_position] + [opposite_position]
                 )
+      puts "\n[BEGIN] MESSAGE FROM AI"
       puts message
-      @player_turn.stones[number].body.v = CP::Vec2.new(x_strength, y_strength)
+      puts "[END] MESSAGE FROM AI\n"
+      reduced_x, reduced_y = reduce_speed(x_strength, y_strength)
+      @player_turn.stones[number].body.v = CP::Vec2.new(reduced_x, reduced_y)
       pass_turn
+    end
+  end
+
+  def reduce_speed x, y
+    if x*x + y*y > MAX_POWER*MAX_POWER
+      puts "OVER"
+      co = MAX_POWER / Math.sqrt(x*x + y*y) 
+      puts co
+      puts x
+      puts y
+      puts x*co
+      puts y*co
+      return x*co, y*co
+    else
+      return x, y
     end
   end
 
@@ -197,9 +216,13 @@ class Alggago < Gosu::Window
       when Gosu::KbN 
         calculate
       when Gosu::MsLeft
-        @player_turn.stones.each do |s|
-          @selected_stone = s if (((s.body.p.x < mouse_x) and (s.body.p.x + STONE_DIAMETER > mouse_x)) and 
-                                    ((s.body.p.y < mouse_y) and (s.body.p.y + STONE_DIAMETER > mouse_y)))
+        unless @player_turn.ai_flag
+          @player_turn.stones.each do |s|
+            @selected_stone = s if (((s.body.p.x < mouse_x) and 
+                                    (s.body.p.x + STONE_DIAMETER > mouse_x)) and 
+                                    ((s.body.p.y < mouse_y) and 
+                                     (s.body.p.y + STONE_DIAMETER > mouse_y)))
+          end
         end
       end 
     end
