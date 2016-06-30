@@ -4,6 +4,8 @@ require 'chipmunk'
 require 'singleton'
 require 'slave'
 require "xmlrpc/client"
+require 'childprocess'
+require 'rbconfig'
 
 WIDTH, HEIGHT = 1000, 700
 TICK = 1.0/60.0
@@ -31,6 +33,16 @@ def is_port_open?(port)
   end
   s.close
   return true
+end
+
+# Detection of OS
+def is_windows?
+  case RbConfig::CONFIG['host_os']
+  when /mswin|msys|mingw|cygwin|bccwin|wince|emc/
+    return true
+  else
+    return false
+  end
 end
 
 class Alggago < Gosu::Window
@@ -68,7 +80,11 @@ class Alggago < Gosu::Window
           break
         end
       end
-      @slaves << Slave.object(:async => true){ `ruby #{x} #{xml_port}` }
+      if is_windows?
+        @slaves << ChildProcess.build("ruby", x, xml_port.to_s).start
+      else
+        @slaves << Slave.object(:async => true){ `ruby #{x} #{xml_port}` }
+      end
       @servers << XMLRPC::Client.new("localhost", "/", xml_port)
       xml_port += 1
     end
