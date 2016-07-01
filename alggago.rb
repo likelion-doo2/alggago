@@ -48,7 +48,12 @@ end
 class Alggago < Gosu::Window
 
   def init_game
+    @winner = "white"
+    @gameover = false
     @can_throw = true
+    @selected_stone = nil
+    @servers = Array.new
+
     @players.each do |player|
       player.stones.each do |stone|
         @space.remove_body(stone.body)
@@ -57,6 +62,7 @@ class Alggago < Gosu::Window
       player.stones.clear
     end
     @players.clear
+
     PLAYER_COLOR.each do |player_color|
       player = Player.new(player_color, NUM_STONES)
       player.stones.each do |stone|
@@ -65,14 +71,13 @@ class Alggago < Gosu::Window
       end
       @players << player
     end
+
     @player_turn = @players[0]
-    @selected_stone = nil
 
     #Load AI
     ais = Dir.entries(".").map {|x| x if /^ai_[[:alnum:]]+.rb$/.match(x)}.compact
-    @slaves = Array.new
-    @servers = Array.new
     xml_port = 8000
+    slaves = Array.new
     ais.each do |x|
       (xml_port..8080).to_a.each do |p|
         if is_port_open?(p)
@@ -81,13 +86,14 @@ class Alggago < Gosu::Window
         end
       end
       if is_windows?
-        @slaves << ChildProcess.build("ruby", x, xml_port.to_s).start
+        slaves << ChildProcess.build("ruby", x, xml_port.to_s).start
       else
-        @slaves << Slave.object(:async => true){ `ruby #{x} #{xml_port}` }
+        slaves << Slave.object(:async => true){ `ruby #{x} #{xml_port}` }
       end
       @servers << XMLRPC::Client.new("localhost", "/", xml_port)
       xml_port += 1
     end
+
     0.upto(@servers.size - 1) do |count|
       server_connection = false
       while !server_connection
@@ -105,7 +111,6 @@ class Alggago < Gosu::Window
     super(WIDTH, HEIGHT, false)
     self.caption = '알까고!'
 
-    @can_throw = true
     @players = Array.new
     @space = CP::Space.new
     @board  = Board.instance
@@ -130,29 +135,28 @@ class Alggago < Gosu::Window
         end
       end
     end
+
+    @players.each do |player| 
+      if player.number_of_stones <= 0 and !@gameover
+        @gameover = true 
+        @winner = if player.color == "white" then "black" else "white" end
+      end
+    end
   end
 
   def draw
     @board.draw
     @players.each { |player| player.draw }
-  
-    gameover = false
-    winner = "white"
-    @players.each do |player| 
-      if player.number_of_stones <= 0 
-        gameover = true 
-        winner = if player.color == "white" then "black" else "white" end
-      end
-    end
 
-    if gameover
-      @font.draw("게임끝!  #{winner} 승리!!", 720, UI_PIVOT + 20, 1.0, 1.0, 1.0)
+    if @gameover
+      @font.draw("게임끝!  #{@winner} 승리!!", 720, UI_PIVOT + 20, 1.0, 1.0, 1.0)
     else
+      pivot_font_y_position = {"black" => UI_PIVOT + 150, "white" => UI_PIVOT + 220}
       moveable = if @can_throw then "가능" else "불가능" end
+
       @font.draw("이동 가능 여부 : #{moveable}", 720, UI_PIVOT + 20, 1.0, 1.0, 1.0)
       @font.draw("다음 턴 : #{@player_turn.color}", 720, UI_PIVOT + 40, 1.0, 1.0, 1.0)
 
-      pivot_font_y_position = {"black" => UI_PIVOT + 150, "white" => UI_PIVOT + 220}
       @players.each do |player|
         @font.draw(player.player_name, 720, 
                       pivot_font_y_position[player.color], 1.0, 1.0, 1.0)
@@ -176,7 +180,7 @@ class Alggago < Gosu::Window
   end
 
   def pass_turn
-    if @can_throw
+    if @can_throw and !@gameover
       @player_turn = if @player_turn == @players[0]
                         @players[1]
                      elsif @player_turn == @players[1]
@@ -186,7 +190,7 @@ class Alggago < Gosu::Window
   end
 
   def calculate
-    if @player_turn.ai_flag and @can_throw
+    if @player_turn.ai_flag and @can_throw and !@gameover
       my_index = if @player_turn == @players[0] then 0 else 1 end
       opposite_index = if @player_turn == @players[0] then 1 else 0 end
       my_position = @players[my_index].stones.map {|s| [s.body.p.x, s.body.p.y]}
@@ -200,6 +204,7 @@ class Alggago < Gosu::Window
       puts "\n[BEGIN] MESSAGE FROM AI"
       puts message
       puts "[END] MESSAGE FROM AI\n"
+
       reduced_x, reduced_y = reduce_speed(x_strength, y_strength)
       @player_turn.stones[number].body.v = CP::Vec2.new(reduced_x, reduced_y)
       pass_turn
@@ -208,13 +213,7 @@ class Alggago < Gosu::Window
 
   def reduce_speed x, y
     if x*x + y*y > MAX_POWER*MAX_POWER
-      puts "OVER"
       co = MAX_POWER / Math.sqrt(x*x + y*y) 
-      puts co
-      puts x
-      puts y
-      puts x*co
-      puts y*co
       return x*co, y*co
     else
       return x, y
@@ -232,7 +231,7 @@ class Alggago < Gosu::Window
       when Gosu::KbN 
         calculate
       when Gosu::MsLeft
-        unless @player_turn.ai_flag
+        if !@player_turn.ai_flag and !@gameover
           @player_turn.stones.each do |s|
             @selected_stone = s if (((s.body.p.x < mouse_x) and 
                                     (s.body.p.x + STONE_DIAMETER > mouse_x)) and 
@@ -285,7 +284,6 @@ class Player
   
   def draw
     @stones.each {|stone| stone.draw}
-
   end
 
   def update
@@ -353,6 +351,7 @@ class Stone
     end
   end
 
+  private
   def get_reduced_rotational_velocity velocity
     if velocity.abs <= ROTATIONAL_FRICTION
       return 0
