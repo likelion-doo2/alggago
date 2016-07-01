@@ -9,7 +9,7 @@ require 'rbconfig'
 
 WIDTH, HEIGHT = 1000, 700
 TICK = 1.0/60.0
-NUM_STONES = 10
+NUM_STONES = 7
 PLAYER_COLOR = ["black", "white"]
 STONE_DIAMETER = 50
 RESTITUTION = 0.9
@@ -158,7 +158,7 @@ class Alggago < Gosu::Window
       @font.draw("다음 턴 : #{@player_turn.color}", 720, UI_PIVOT + 40, 1.0, 1.0, 1.0)
 
       @players.each do |player|
-        @font.draw(player.player_name, 720, 
+        @font.draw("#{player.color} : #{player.player_name}", 720, 
                       pivot_font_y_position[player.color], 1.0, 1.0, 1.0)
         @font.draw("남은 돌 : #{player.number_of_stones}개", 720, 
                       pivot_font_y_position[player.color] + 20, 1.0, 1.0, 1.0)
@@ -279,6 +279,7 @@ class Player
     @player_name = "사람_#{Array.new(6){rand(10)}.join}"
     @ai_flag = false
     @number_of_stones = NUM_STONES
+
     num.times { @stones << Stone.new(@color) }
   end
   
@@ -305,8 +306,11 @@ class Stone
   def initialize(color)
     @should_delete = false
     @body = CP::Body.new(1, CP::moment_for_circle(1.0, 0, 1, CP::Vec2.new(0, 0))) 
-    @body.p = CP::Vec2.new(rand(HEIGHT), rand(HEIGHT)) 
-    @body.v = CP::Vec2.new(rand(HEIGHT)-HEIGHT/2, rand(HEIGHT)-HEIGHT/2)
+    
+    position_y = rand((HEIGHT/2).to_i - 100) + 50
+    position_y = position_y + HEIGHT/2.0 if color == "white"
+    @body.p = CP::Vec2.new(rand(HEIGHT - 100) + 50, position_y) 
+   #@body.v = CP::Vec2.new(rand(HEIGHT)-HEIGHT/2, rand(HEIGHT)-HEIGHT/2)
 
     @shape = CP::Shape::Circle.new(body, STONE_DIAMETER/2.0, CP::Vec2.new(0, 0))
     @shape.e = RESTITUTION
