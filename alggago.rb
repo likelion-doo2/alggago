@@ -245,12 +245,12 @@ class Alggago < Gosu::Window
   def button_up(id)
     case id 
     when Gosu::MsLeft
-	  @players.each do |player|
-	    player.stones.each do |s|
-		  s.body.w =0
-		end
-	  end
       if !@selected_stone.nil?
+		@players.each do |player|
+		  player.stones.each do |s|
+		    s.body.w =0
+		  end
+		end
         x_diff = mouse_x - (@selected_stone.body.p.x + STONE_DIAMETER/2.0)
         y_diff = mouse_y - (@selected_stone.body.p.y + STONE_DIAMETER/2.0)
 
