@@ -126,7 +126,7 @@ class Alggago < Gosu::Window
     @players.each do |player|
       player.update
       player.stones.each do |stone| 
-        @can_throw = false if (stone.body.w != 0) or (stone.body.v.x != 0) or (stone.body.v.y != 0) 
+        @can_throw = false if (stone.body.v.x != 0) or (stone.body.v.y != 0) 
         if stone.should_delete 
           @space.remove_body(stone.body)
           @space.remove_shape(stone.shape)
@@ -221,8 +221,7 @@ class Alggago < Gosu::Window
   end
 
   def button_down(id) 
-    can_throw = true
-    if can_throw
+    if @can_throw
       case id 
       when Gosu::KbR 
         restart
@@ -246,6 +245,11 @@ class Alggago < Gosu::Window
   def button_up(id)
     case id 
     when Gosu::MsLeft
+	  @players.each do |player|
+	    player.stones.each do |s|
+		  s.body.w =0
+		end
+	  end
       if !@selected_stone.nil?
         x_diff = mouse_x - (@selected_stone.body.p.x + STONE_DIAMETER/2.0)
         y_diff = mouse_y - (@selected_stone.body.p.y + STONE_DIAMETER/2.0)
