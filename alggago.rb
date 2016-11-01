@@ -327,7 +327,7 @@ class Stone
   def update
     #update speed
     new_vel_x, new_vel_y = 0.0, 0.0
-    if @body.v.x != 0 and @body.v.y != 0
+    if @body.v.x != 0 or @body.v.y != 0
       new_vel_x = get_reduced_velocity(@body.v.x, @body.v.length)
       new_vel_y = get_reduced_velocity(@body.v.y, @body.v.length)
     end
